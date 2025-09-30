@@ -18,7 +18,7 @@ namespace GenerationPassword
         {
             InitializeComponent();
 
-            // собрать набор символов
+            // собрать набор символов 
             var list = new StringBuilder();
             list.Append(lower);
             list.Append(upper);
