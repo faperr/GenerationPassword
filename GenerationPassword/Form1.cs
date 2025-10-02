@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Linq;
 using System.Security.Cryptography;
-using System.Text;
 using System.Windows.Forms;
 
 namespace GenerationPassword
@@ -12,42 +14,95 @@ namespace GenerationPassword
         private readonly char[] lower = "abcdefghijklmnopqrstuvwxyz".ToCharArray();
         private readonly char[] upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".ToCharArray();
         private readonly char[] digits = "0123456789".ToCharArray();
-        private readonly char[] allChars;
+        private readonly char[] special = "!@#$%".ToCharArray();
 
         public Form1()
         {
             InitializeComponent();
 
-            // собрать набор символов 
-            var list = new StringBuilder();
-            list.Append(lower);
-            list.Append(upper);
-            list.Append(digits);
-            allChars = list.ToString().ToCharArray();
+            // Чекбоксы по умолчанию
+            checkBoxLower.Checked = true;
+            checkBoxUpper.Checked = true;
+            checkBoxDigits.Checked = true;
+            checkBoxSpecial.Checked = false;
+
+            // Настройки NumericUpDown
+            numericUpDownLength.Minimum = 6;
+            numericUpDownLength.Maximum = 32;
+            numericUpDownLength.Value = 12;
+            numericUpDownLength.Increment = 1;
+
+            // Центрирование формы
+            this.StartPosition = FormStartPosition.CenterScreen;
+
+            // Подписка на автоматическую генерацию при изменении длины
+            numericUpDownLength.ValueChanged += numericUpDownLength_ValueChanged;
         }
 
         private void BtnGeneration_Click(object sender, EventArgs e)
         {
-            string password = GeneratePassword(12); // длина по умолчанию 12
-            textBox.Text = password;
+            GenerateAndDisplayPassword();
+        }
+
+        private void numericUpDownLength_ValueChanged(object sender, EventArgs e)
+        {
+            // Генерируем пароль автоматически при изменении длины
+            GenerateAndDisplayPassword();
+        }
+
+        private void GenerateAndDisplayPassword()
+        {
+            BtnGeneration.BackColor = Color.LightGreen;
+
+            try
+            {
+                int length = (int)numericUpDownLength.Value;
+                string password = GeneratePassword(length);
+                textBox.Text = password;
+
+                UpdatePasswordStrength(password);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+
+            Timer t = new Timer();
+            t.Interval = 200;
+            t.Tick += (s, ev) =>
+            {
+                BtnGeneration.BackColor = SystemColors.Control;
+                t.Stop();
+                t.Dispose();
+            };
+            t.Start();
         }
 
         private string GeneratePassword(int length)
         {
-            if (length < 3)
-                throw new ArgumentException("Длина должна быть не меньше 3");
+            var selectedGroups = new List<char[]>();
+            if (checkBoxLower.Checked) selectedGroups.Add(lower);
+            if (checkBoxUpper.Checked) selectedGroups.Add(upper);
+            if (checkBoxDigits.Checked) selectedGroups.Add(digits);
+            if (checkBoxSpecial.Checked) selectedGroups.Add(special);
 
+            if (selectedGroups.Count == 0)
+                throw new InvalidOperationException("Нужно выбрать хотя бы один тип символов.");
+
+            if (length < selectedGroups.Count)
+                throw new ArgumentException($"Длина должна быть не меньше {selectedGroups.Count}");
+
+            var allChars = selectedGroups.SelectMany(g => g).ToArray();
             char[] result = new char[length];
 
-            // гарантируем хотя бы по одному символу из каждой группы
-            result[0] = PickRandom(lower);
-            result[1] = PickRandom(upper);
-            result[2] = PickRandom(digits);
+            for (int i = 0; i < selectedGroups.Count; i++)
+                result[i] = PickRandom(selectedGroups[i]);
 
-            for (int i = 3; i < length; i++)
+            for (int i = selectedGroups.Count; i < length; i++)
                 result[i] = PickRandom(allChars);
 
             Shuffle(result);
+
             return new string(result);
         }
 
@@ -66,7 +121,6 @@ namespace GenerationPassword
             }
         }
 
-        // Реализация RandomNumberGenerator.GetInt32 для .NET Framework
         private int GetRandomInt(int minInclusive, int maxExclusive)
         {
             if (minInclusive >= maxExclusive)
@@ -84,5 +138,63 @@ namespace GenerationPassword
                     return (int)(minInclusive + (rand % range));
             }
         }
+
+        private void btnCopy_Click(object sender, EventArgs e)
+        {
+            if (!string.IsNullOrEmpty(textBox.Text))
+            {
+                Clipboard.SetText(textBox.Text);
+
+                labelMessage.Text = "Пароль скопирован!";
+                labelMessage.Visible = true;
+
+                Timer t = new Timer();
+                t.Interval = 2000;
+                t.Tick += (s, ev) =>
+                {
+                    labelMessage.Visible = false;
+                    t.Stop();
+                    t.Dispose();
+                };
+                t.Start();
+            }
+        }
+
+        private void UpdatePasswordStrength(string password)
+        {
+            if (string.IsNullOrEmpty(password))
+            {
+                labelStrength.Text = "";
+                return;
+            }
+
+            int types = 0;
+            if (password.Any(char.IsLower)) types++;
+            if (password.Any(char.IsUpper)) types++;
+            if (password.Any(char.IsDigit)) types++;
+            if (password.Any(c => "!@#$%".Contains(c))) types++;
+
+            if (password.Length < 6 || types < 2)
+            {
+                labelStrength.Text = "Слабый";
+                labelStrength.ForeColor = Color.Red;
+            }
+            else if (password.Length < 10 || types < 3)
+            {
+                labelStrength.Text = "Средний";
+                labelStrength.ForeColor = Color.Orange;
+            }
+            else
+            {
+                labelStrength.Text = "Надежный";
+                labelStrength.ForeColor = Color.Green;
+            }
+        }
+
+        // Заглушки для чекбоксов
+        private void checkBoxUpper_CheckedChanged(object sender, EventArgs e) { }
+        private void checkBoxLower_CheckedChanged(object sender, EventArgs e) { }
+        private void checkBoxDigits_CheckedChanged(object sender, EventArgs e) { }
+        private void checkBoxSpecial_CheckedChanged(object sender, EventArgs e) { }
     }
 }
